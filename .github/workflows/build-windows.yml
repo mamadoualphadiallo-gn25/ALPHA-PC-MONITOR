@@ -1,18 +1,54 @@
 name: Build Windows
+
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     tags: ['v*']
+
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - run: python -m pip install -r requirements.txt pyinstaller
-      - run: pyinstaller --noconfirm --clean --windowed --name ALPHA-PC-MONITOR packaging/alpha_pc_monitor.spec
-      - uses: actions/upload-artifact@v4
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install pyinstaller
+
+      - name: Vérifier les tests
+        run: python -m pytest -q
+
+      - name: Construire le fichier EXE
+        run: python -m PyInstaller --noconfirm --clean packaging/alpha_pc_monitor.spec
+
+      - name: Vérifier la présence du EXE
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/ALPHA-PC-MONITOR.exe")) {
+            Write-Error "Le fichier dist/ALPHA-PC-MONITOR.exe est introuvable."
+            Get-ChildItem -Recurse dist
+            exit 1
+          }
+          Get-Item "dist/ALPHA-PC-MONITOR.exe" | Format-List Name,Length,FullName
+
+      - name: Publier le fichier EXE
+        uses: actions/upload-artifact@v4
         with:
           name: ALPHA-PC-MONITOR-Windows
-          path: dist/ALPHA-PC-MONITOR/
+          path: dist/ALPHA-PC-MONITOR.exe
+          if-no-files-found: error
+          retention-days: 30
